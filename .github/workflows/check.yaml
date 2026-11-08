@@ -1,0 +1,72 @@
+name: Check charts
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.1
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C "$RUNNER_TEMP" kubeconform
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Validate charts
+        run: |
+          shopt -s nullglob
+          for chart_file in */Chart.yaml; do
+            chart="$(dirname "$chart_file")"
+
+            # Each file in <chart>/ci is an extra set of values to test.
+            for values in /dev/null "$chart"/ci/*.yaml; do
+              echo "Validating $chart with $values"
+              helm lint "$chart" --strict --values "$values"
+              helm template "$chart" "$chart" --values "$values" \
+                | kubeconform -strict -summary \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            done
+          done
+
+  version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require a version bump for changed charts
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          status=0
+          for chart_file in */Chart.yaml; do
+            chart="$(dirname "$chart_file")"
+
+            # New charts have nothing to compare against.
+            git cat-file -e "$BASE_SHA:$chart_file" 2> /dev/null || continue
+            git diff --quiet "$BASE_SHA" HEAD -- "$chart" && continue
+
+            base_version="$(git show "$BASE_SHA:$chart_file" | awk '/^version:/ {print $2}')"
+            version="$(awk '/^version:/ {print $2}' "$chart_file")"
+            if [ "$version" = "$base_version" ]; then
+              echo "::error file=$chart_file::$chart changed but its version is still $version"
+              status=1
+            fi
+          done
+          exit "$status"
