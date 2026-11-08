@@ -1,0 +1,38 @@
+# Number of Excalidraw pods to run.
+replicaCount: 1
+
+image:
+  # Container image to deploy, without the tag.
+  repository: docker.io/excalidraw/excalidraw
+  # Image tag. Pin a specific tag in production, because nodes keep the first
+  # "latest" they pull when pullPolicy is IfNotPresent.
+  tag: latest
+  # When the kubelet pulls the image: Always, IfNotPresent or Never.
+  pullPolicy: IfNotPresent
+
+# CPU and memory requests and limits for the Excalidraw container.
+# Left empty, no requests or limits are set.
+resources: {}
+
+service:
+  # Kubernetes Service type: ClusterIP, NodePort or LoadBalancer.
+  type: ClusterIP
+  # Port the Service listens on. Traffic is forwarded to container port 80.
+  port: 8080
+
+# Exposes Excalidraw through a Gateway API HTTPRoute, which sends all paths to
+# the Service. Requires the Gateway API CRDs to be installed in the cluster.
+httpRoute:
+  # Create the HTTPRoute.
+  enabled: false
+  # Gateways to attach the route to. Required when enabled is true.
+  # A Gateway in another namespace must allow routes from this release's
+  # namespace.
+  parentRefs: []
+  # - name: my-gateway
+  #   namespace: my-gateway-namespace
+  #   sectionName: https
+  # Hostnames the route matches. Left empty, it matches every hostname accepted
+  # by the Gateway listener.
+  hostnames: []
+  # - draw.example.com
